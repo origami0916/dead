@@ -12,14 +12,22 @@
         <h1><i class="fas fa-chart-pie"></i> 薬品在庫分析ダッシュボード</h1>
     </header>
 
-    <nav class="tab-nav">
+    <section id="data-input-section" class="card">
+        <h2><i class="fas fa-paste"></i> 在庫データ入力</h2>
+        <p>ここに在庫データを貼り付けてください。(タブ区切り形式を想定)</p>
+        <textarea id="inventoryDataInput" rows="10" placeholder="薬品コード (タブ) YJコード (タブ) 薬品種別 ..."></textarea>
+        <button id="loadDataButton" class="button-primary"><i class="fas fa-upload"></i> このデータで分析を開始</button>
+        <div id="data-error-output" class="error-message" style="display: none;"></div>
+    </section>
+
+    <nav class="tab-nav" style="display: none;">
         <button class="tab-button active" data-tab="dashboard"><i class="fas fa-tachometer-alt"></i> ダッシュボード</button>
         <button class="tab-button" data-tab="inventory-list"><i class="fas fa-list-ul"></i> 在庫一覧</button>
         <button class="tab-button" data-tab="analysis-reports"><i class="fas fa-chart-bar"></i> 分析レポート</button>
         <button class="tab-button" data-tab="ai-advisor"><i class="fas fa-brain"></i> AIアドバイス</button>
     </nav>
 
-    <main>
+    <main style="display: none;">
         <section id="dashboard" class="tab-content active">
             <h2>ダッシュボード</h2>
             <div class="dashboard-grid">
@@ -146,28 +154,28 @@
             </div>
 
             <div id="loading-indicator" class="loading" style="display: none;">
-                <i class="fas fa-spinner fa-spin"></i> データを読み込んでいます...
+                <i class="fas fa-spinner fa-spin"></i> データを処理しています...
             </div>
 
             <div class="table-wrapper card">
                 <table id="inventory-table">
                     <thead>
                         <tr>
-                            <th data-sort="dangerRank">危険度</th>
+                            <th data-sort="危険度ランク">危険度</th>
                              <th data-sort="薬品名称">薬品名称</th>
                              <th data-sort="フリガナ">フリガナ</th>
                              <th data-sort="在庫数量">在庫数量</th>
                              <th data-sort="単位">単位</th>
                              <th data-sort="在庫金額(税別)">在庫金額(税別)</th>
-                             <th data-sort="最終出庫(停滞)">滞留日数</th>
-                             <th data-sort="有効期限">有効期限</th>
-                             <th data-sort="薬品種別">薬品種別</th>
+                             <th data-sort="最終出庫(停滞)">滞留日数</th> <th data-sort="有効期限">有効期限</th> <th data-sort="薬品種別">薬品種別</th>
                              <th data-sort="メーカー">メーカー</th>
                              <th data-sort="卸">卸</th>
+                             <th data-sort="最終入庫(停滞)">最終入庫(停滞)</th><th data-sort="YJコード">YJコード</th>
+                             <th data-sort="薬品コード">薬品コード</th>
                              </tr>
                     </thead>
                     <tbody>
-                        <tr><td colspan="11" style="text-align: center;">データを読み込んでください...</td></tr>
+                        <tr><td colspan="14" style="text-align: center;">データを入力して「分析を開始」ボタンを押してください...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -225,7 +233,7 @@
                 <div class="card">
                     <h3><i class="fas fa-lightbulb"></i> AIからのアドバイス</h3>
                     <div id="ai-advice-output">
-                        <p>ここにAIからのアドバイスが表示されます。</p>
+                        <p>AIアドバイス機能を利用するには、APIキーを設定し、「AIにアドバイスを求める」ボタンを押してください。</p>
                     </div>
                     <button id="copyAiAdvice" style="display: none;">アドバイスをコピー</button>
                 </div>
@@ -233,9 +241,11 @@
         </section>
     </main>
 
-    <footer>
+    <footer style="display: none;">
         <p>&copy; 2025 薬品在庫分析ダッシュボード</p>
     </footer>
 
-    </body>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <script src="script.js"></script>
+</body>
 </html>
