@@ -138,6 +138,14 @@ document.addEventListener('DOMContentLoaded', () => {
         originalHeaders = lines[0].split('\t').map(header => header.trim());
         const expectedHeaderCount = originalHeaders.length;
 
+        // ★★★ ヘッダー名の揺らぎを吸収する例（必要に応じて）★★★
+        // originalHeaders = originalHeaders.map(h => {
+        //     if (h === '最終出庫') return '最終出庫日'; // もしヘッダーが"最終出庫"なら内部的に"最終出庫日"として扱う
+        //     // 他にも揺らぎがあればここに追加
+        //     return h;
+        // });
+        // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
         const data = [];
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i].trim();
@@ -149,12 +157,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (values.length !== expectedHeaderCount) {
                 console.warn(`行 ${i + 1}: 列数がヘッダーと一致しません (${values.length}列、期待値${expectedHeaderCount}列)。スキップします。 Line: "${line}"`);
                 continue; // スキップする場合
-                // throw new Error(`行 ${i + 1}: 列数がヘッダーと一致しません。`); // エラーにする場合
             }
 
             const item = {};
             for (let j = 0; j < expectedHeaderCount; j++) {
-                item[originalHeaders[j]] = values[j];
+                item[originalHeaders[j]] = values[j]; // 元のヘッダー名で格納
             }
             data.push(item);
         }
@@ -170,30 +177,74 @@ document.addEventListener('DOMContentLoaded', () => {
     function preprocessData() {
         const currentDate = new Date(); // 現在日時を取得
 
-        // 必須カラムの存在チェック (キー名はTSVヘッダーに依存)
-        const requiredKeys = ['有効期限', '最終出庫日', '在庫金額(税別)', '在庫数量'];
+        // --- ▼▼▼ 必須カラム名の修正 ▼▼▼ ---
+        // 必須カラムの存在チェック (実際のヘッダー名に合わせる)
+        const requiredKeys = [
+            '有効期限',
+            '最終出庫', // "最終出庫日" から "最終出庫" に変更
+            '在庫金額(税別)',
+            '在庫数量'
+        ];
+        // --- ▲▲▲ 必須カラム名の修正 ▲▲▲ ---
+
         for (const key of requiredKeys) {
             if (!originalHeaders.includes(key)) {
+                // エラーメッセージを具体的に
+                console.error("Missing required header:", key, "Available headers:", originalHeaders);
                 throw new Error(`必須カラム "${key}" がデータに含まれていません。`);
             }
         }
 
+        // --- ▼▼▼ 日付取得キーの修正 ▼▼▼ ---
+        const expiryDateKey = '有効期限';
+        const lastOutDateKey = '最終出庫'; // "最終出庫日" から "最終出庫" に変更
+        const lastInDateKey = '最終入庫';   // "最終入庫(停滞)" から "最終入庫" に変更 (ユーザー提供リストに基づく)
+        const stagnationColKey = '(停滞)'; // 停滞日数の列名 (最終入庫/出庫の隣にあると想定)
+
+        // 停滞日数の列名を特定 (例: "最終入庫" の次が "(停滞)" ならそれを使う)
+        const lastInStagnationKey = originalHeaders.includes(lastInDateKey) && originalHeaders.indexOf(lastInDateKey) + 1 < originalHeaders.length && originalHeaders[originalHeaders.indexOf(lastInDateKey) + 1] === stagnationColKey
+                                     ? stagnationColKey // "最終入庫" の次の "(停滞)"
+                                     : originalHeaders.find(h => h.includes('最終入庫') && h.includes('停滞')); // フォールバック: "最終入庫(停滞)" などを含む列名
+
+        const lastOutStagnationKey = originalHeaders.includes(lastOutDateKey) && originalHeaders.indexOf(lastOutDateKey) + 1 < originalHeaders.length && originalHeaders[originalHeaders.indexOf(lastOutDateKey) + 1] === stagnationColKey
+                                     ? stagnationColKey // "最終出庫" の次の "(停滞)"
+                                     : originalHeaders.find(h => h.includes('最終出庫') && h.includes('停滞')); // フォールバック: "最終出庫(停滞)" などを含む列名
+
+        // --- ▲▲▲ 日付取得キーの修正 ▲▲▲ ---
+
 
         inventoryData = inventoryData.map(item => {
             // 日付オブジェクトの生成 (不正な日付はnullに)
-            const expiryDate = parseDate(item['有効期限']);
-            const lastOutDate = parseDate(item['最終出庫日']);
-            // '最終入庫(停滞)' カラムが存在すれば処理
-            const lastInDate = originalHeaders.includes('最終入庫(停滞)') ? parseDate(item['最終入庫(停滞)']) : null;
+            const expiryDate = parseDate(item[expiryDateKey]);
+            const lastOutDate = parseDate(item[lastOutDateKey]);
+            const lastInDate = originalHeaders.includes(lastInDateKey) ? parseDate(item[lastInDateKey]) : null;
 
             // 滞留日数と残り日数の計算
-            const stagnationDays = calculateStagnationDays(currentDate, lastOutDate);
+            // ★★★ 変更点: 停滞日数は元のデータから取得するように試みる ★★★
+            let stagnationDays;
+            if (lastOutStagnationKey && !isNaN(parseInt(item[lastOutStagnationKey]))) {
+                stagnationDays = parseInt(item[lastOutStagnationKey]); // 元データの停滞日数を使用
+            } else {
+                stagnationDays = calculateStagnationDays(currentDate, lastOutDate); // 計算する場合
+            }
+
+            let lastInDays;
+             if (lastInStagnationKey && !isNaN(parseInt(item[lastInStagnationKey]))) {
+                lastInDays = parseInt(item[lastInStagnationKey]); // 元データの停滞日数を使用
+            } else {
+                lastInDays = calculateStagnationDays(currentDate, lastInDate); // 計算する場合
+            }
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
             const remainingDays = calculateRemainingDays(currentDate, expiryDate);
-            const lastInDays = calculateStagnationDays(currentDate, lastInDate); // 最終入庫からの経過日数
+
 
              // 在庫金額と数量を数値に変換（失敗したら0）
-            const itemValue = parseFloat(String(item['在庫金額(税別)']).replace(/,/g, '')) || 0; // カンマ除去
-            const itemQuantity = parseFloat(String(item['在庫数量']).replace(/,/g, '')) || 0; // カンマ除去
+             // キー名を動的に取得
+             const valueKey = originalHeaders.find(h => h.includes('在庫金額(税別)')) || '在庫金額(税別)';
+             const quantityKey = originalHeaders.find(h => h.includes('在庫数量')) || '在庫数量';
+            const itemValue = parseFloat(String(item[valueKey]).replace(/,/g, '')) || 0; // カンマ除去
+            const itemQuantity = parseFloat(String(item[quantityKey]).replace(/,/g, '')) || 0; // カンマ除去
 
             // 危険度ランク計算
             const dangerRank = calculateDangerRank(remainingDays, stagnationDays, expiryWeightParam);
@@ -207,23 +258,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const processedItem = {
                 ...item, // 元のデータも保持
                 '有効期限Date': expiryDate,
-                '最終出庫日Date': lastOutDate,
-                '最終入庫日Date': lastInDate,
+                '最終出庫日Date': lastOutDate, // キー名は内部的に統一しておく
+                '最終入庫日Date': lastInDate,   // キー名は内部的に統一しておく
                 '在庫金額Numeric': itemValue,
                 '在庫数量Numeric': itemQuantity,
-                '滞留日数Numeric': stagnationDays,
+                '滞留日数Numeric': stagnationDays, // 計算結果または元データ
                 '残り日数Numeric': remainingDays,
-                '最終入庫日数Numeric': lastInDays,
+                '最終入庫日数Numeric': lastInDays, // 計算結果または元データ
                 '危険度ランク': dangerRank,
                  // 表示用の整形済みデータ (元のキーを上書き)
                 '滞留日数表示': stagnationDisplay,
                 '有効期限表示': expiryDate ? formatDate(expiryDate) : '---',
                 '最終入庫停滞表示': lastInDisplay
             };
-             // 元のカラム名が存在すれば上書き (表示用)
-             if (originalHeaders.includes('最終出庫(停滞)')) processedItem['最終出庫(停滞)'] = stagnationDisplay;
-             if (originalHeaders.includes('有効期限')) processedItem['有効期限'] = processedItem['有効期限表示'];
-             if (originalHeaders.includes('最終入庫(停滞)')) processedItem['最終入庫(停滞)'] = processedItem['最終入庫停滞表示'];
+             // 元のカラム名が存在すれば上書き (表示用) - 元の(停滞)列に表示
+             if (lastOutStagnationKey) processedItem[lastOutStagnationKey] = stagnationDisplay;
+             if (originalHeaders.includes(expiryDateKey)) processedItem[expiryDateKey] = processedItem['有効期限表示'];
+             if (lastInStagnationKey) processedItem[lastInStagnationKey] = lastInDisplay;
 
             return processedItem;
         });
@@ -236,12 +287,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const trimmed = dateString.trim();
         // 年だけのデータ("2019"など)や '-' は日付として無効とする
         if (/^\d{4}$/.test(trimmed) || trimmed === '-') return null;
-        // '-' 区切りを '/' に統一
+        // '/' または '-' 区切りに対応
         const formattedDateString = trimmed.replace(/-/g, '/');
-        const date = new Date(formattedDateString);
-        // 不正な日付でないかチェック (例: "2023/02/30")
-        return isNaN(date.getTime()) ? null : date;
+        const parts = formattedDateString.split('/');
+        if (parts.length === 3) {
+            // 月と日を2桁にゼロ埋め (例: 2024/1/1 -> 2024/01/01)
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10);
+            const day = parseInt(parts[2], 10);
+            if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+                 const date = new Date(year, month - 1, day);
+                 // 年月日が一致するか確認 (例: 2023/2/30 が 2023/3/2 にならないように)
+                 if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
+                     return date;
+                 }
+            }
+        }
+        return null; // 不正な形式または日付
     }
+
 
      // 日付オブジェクトをYYYY/MM/DD形式の文字列に変換
     function formatDate(date) {
@@ -252,21 +316,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${y}/${m}/${d}`;
     }
 
-    // 滞留日数計算
+    // 滞留日数計算 (最終出庫日がない場合は9999)
     function calculateStagnationDays(currentDate, lastOutDate) {
-        if (!lastOutDate || !(lastOutDate instanceof Date) || isNaN(lastOutDate.getTime())) return 9999; // 出庫日なし or 不正な日付
+        if (!lastOutDate || !(lastOutDate instanceof Date) || isNaN(lastOutDate.getTime())) return 9999;
         const diffTime = currentDate.getTime() - lastOutDate.getTime();
         return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
     }
 
-    // 残り日数計算
+    // 残り日数計算 (有効期限がない場合はNaN)
     function calculateRemainingDays(currentDate, expiryDate) {
-        if (!expiryDate || !(expiryDate instanceof Date) || isNaN(expiryDate.getTime())) return NaN; // 有効期限なし or 不正
-        // 日付のみで比較するため、時刻部分をリセット
+        if (!expiryDate || !(expiryDate instanceof Date) || isNaN(expiryDate.getTime())) return NaN;
         const today = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
         const expiry = new Date(expiryDate.getFullYear(), expiryDate.getMonth(), expiryDate.getDate());
         const diffTime = expiry.getTime() - today.getTime();
-        return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); // 切り上げで残り日数を計算
+        return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     }
 
 
@@ -292,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 滞留日数スコア (0-100)
         let scoreStagnation = 0;
-         if (isNaN(stagnationDays) || stagnationDays >= 730) { // 2年以上 or 出庫日なし
+         if (isNaN(stagnationDays) || stagnationDays >= 730) { // 2年以上 or 出庫日なし or 不明
             scoreStagnation = 100;
         } else if (stagnationDays >= 365) { // 1年～2年未満
             scoreStagnation = 90;
@@ -389,7 +452,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (valA < valB) return isSortAscending ? -1 : 1;
                 if (valA > valB) return isSortAscending ? 1 : -1;
-                return 0;
+                // 同値の場合は薬品名でソート（安定ソート）
+                const nameKey = originalHeaders.find(h => h.includes('薬品名称')) || '薬品名称';
+                return String(a[nameKey] ?? '').localeCompare(String(b[nameKey] ?? ''));
             });
         } else if (currentSortColumn) { // 元のキーでソート (フォールバック)
              filteredData.sort((a, b) => {
@@ -399,7 +464,9 @@ document.addEventListener('DOMContentLoaded', () => {
                  valB = String(valB ?? '').toLowerCase();
                  if (valA < valB) return isSortAscending ? -1 : 1;
                  if (valA > valB) return isSortAscending ? 1 : -1;
-                 return 0;
+                 // 同値の場合は薬品名でソート（安定ソート）
+                 const nameKey = originalHeaders.find(h => h.includes('薬品名称')) || '薬品名称';
+                 return String(a[nameKey] ?? '').localeCompare(String(b[nameKey] ?? ''));
              });
         }
 
@@ -456,8 +523,9 @@ document.addEventListener('DOMContentLoaded', () => {
         thead.innerHTML = ''; // クリア
         const tr = document.createElement('tr');
 
+        // --- ▼▼▼ 表示カラム定義の修正 ▼▼▼ ---
         // 表示したいカラムとソートキーのマッピング
-        // キー: 表示名, 値: 元のヘッダー名 or 処理済みキー
+        // キー: 表示名, 値: { sortKey: 元のヘッダー名, processedKey: 処理済みキー, ... }
         const displayColumns = {
             '危険度': { sortKey: '危険度ランク', processedKey: '危険度ランク', align: 'center', isNumeric: true },
             '薬品名称': { sortKey: '薬品名称', processedKey: '薬品名称' },
@@ -465,50 +533,88 @@ document.addEventListener('DOMContentLoaded', () => {
             '在庫数量': { sortKey: '在庫数量', processedKey: '在庫数量Numeric', align: 'right', isNumeric: true },
             '単位': { sortKey: '単位', processedKey: '単位', align: 'center' },
             '在庫金額(税別)': { sortKey: '在庫金額(税別)', processedKey: '在庫金額Numeric', align: 'right', isNumeric: true, isCurrency: true },
-            '滞留日数': { sortKey: '最終出庫(停滞)', processedKey: '滞留日数Numeric', align: 'right', isNumeric: true }, // 元のヘッダー名でソートキー指定
-            '有効期限': { sortKey: '有効期限', processedKey: '有効期限Date', align: 'center' }, // 元のヘッダー名でソートキー指定
+            '滞留日数': { sortKey: '(停滞)', processedKey: '滞留日数Numeric', align: 'right', isNumeric: true }, // 表示名とソートキーを調整
+            '有効期限': { sortKey: '有効期限', processedKey: '有効期限Date', align: 'center' },
             '薬品種別': { sortKey: '薬品種別', processedKey: '薬品種別' },
             'メーカー': { sortKey: 'メーカー', processedKey: 'メーカー' },
             '卸': { sortKey: '卸', processedKey: '卸' },
-            '最終入庫(停滞)': { sortKey: '最終入庫(停滞)', processedKey: '最終入庫日数Numeric', align: 'right', isNumeric: true },
+            '最終入庫日': { sortKey: '最終入庫', processedKey: '最終入庫日Date', align: 'center' }, // 表示名変更
+            '最終入庫(停滞)': { sortKey: '(停滞)', processedKey: '最終入庫日数Numeric', align: 'right', isNumeric: true }, // 表示名とソートキーを調整
             'YJコード': { sortKey: 'YJコード', processedKey: 'YJコード' },
             '薬品コード': { sortKey: '薬品コード', processedKey: '薬品コード' },
+            '包装コード': { sortKey: '包装コード', processedKey: '包装コード'},
+            '包装形状': { sortKey: '包装形状', processedKey: '包装形状'},
+            '出力設定': { sortKey: '出力設定（0：出庫なし、1：強制）', processedKey: '出力設定（0：出庫なし、1：強制）', align: 'center'},
+            '税額': { sortKey: '税額', processedKey: '税額', align: 'right'}, // 税額も表示対象に
         };
+        // --- ▲▲▲ 表示カラム定義の修正 ▲▲▲ ---
 
-        // 元データに含まれるヘッダーに基づいて表示するカラムを決定
-        originalHeaders.forEach(header => {
-             // displayColumns に定義されているか、または基本的なカラムかチェック
-             const columnDef = Object.entries(displayColumns).find(([_, def]) => def.sortKey === header)?.[1]
-                             || Object.values(displayColumns).find(def => def.processedKey === header); // processedKey での検索も追加
+        // 表示するカラムの順序を定義（ユーザー提供リストに基づく）
+        const orderedHeaders = [
+            '危険度ランク', // これはコードで追加
+            '薬品コード', 'YJコード', '薬品種別', 'フリガナ', '薬品名称',
+            '包装コード', '包装形状', '在庫数量', '在庫金額(税別)',
+            '最終入庫', // 日付
+            '(停滞)', // 最終入庫の停滞日数
+            '最終出庫', // 日付
+            '(停滞)', // 最終出庫の停滞日数 (2回目)
+            'メーカー', '卸', '単位',
+            '出力設定（0：出庫なし、1：強制）', '税額', '有効期限'
+        ];
 
-             const displayName = Object.entries(displayColumns).find(([name, def]) => def.sortKey === header)?.[0] || header;
+        // orderedHeaders に基づいて th 要素を作成
+        orderedHeaders.forEach((headerName, index) => {
+            let columnDef = null;
+            let displayName = headerName;
 
-             if (columnDef) { // 表示対象カラムの場合
-                const th = document.createElement('th');
-                th.textContent = displayName;
-                th.dataset.sort = header; // ソートの基準は元のヘッダー名
-                th.dataset.processedKey = columnDef.processedKey; // 実際のソートに使うキー
-                if (columnDef.align) {
-                    th.style.textAlign = columnDef.align;
-                }
-                tr.appendChild(th);
+            // 危険度ランクは特別扱い
+            if (headerName === '危険度ランク') {
+                 columnDef = displayColumns['危険度'];
+                 displayName = '危険度';
+            }
+            // 2回目の '(停滞)' は最終出庫の停滞日数とする
+            else if (headerName === '(停滞)' && orderedHeaders.indexOf('(停滞)') !== index) {
+                 columnDef = displayColumns['滞留日数']; // '滞留日数' の定義を使用
+                 displayName = '滞留日数';
+            }
+            // 1回目の '(停滞)' は最終入庫の停滞日数とする
+             else if (headerName === '(停滞)') {
+                 columnDef = displayColumns['最終入庫(停滞)'];
+                 displayName = '最終入庫(停滞)';
+            }
+             // 他のカラムは displayColumns から探す
+             else {
+                 const foundEntry = Object.entries(displayColumns).find(([dName, def]) => def.sortKey === headerName);
+                 if (foundEntry) {
+                     displayName = foundEntry[0]; // 表示名を取得
+                     columnDef = foundEntry[1];
+                 } else {
+                     // displayColumnsに定義がない場合は、元のヘッダー名をそのまま使う
+                     columnDef = { sortKey: headerName, processedKey: headerName };
+                     displayName = headerName;
+                 }
+            }
+
+
+             // 元データにヘッダーが存在するか確認 (危険度ランクを除く)
+             if (headerName !== '危険度ランク' && !originalHeaders.includes(columnDef.sortKey)) {
+                 console.warn(`Header "${columnDef.sortKey}" not found in original data, skipping column "${displayName}".`);
+                 return; // 元データにない列はスキップ
              }
+
+             const th = document.createElement('th');
+             th.textContent = displayName;
+             th.dataset.sort = columnDef.sortKey; // ソートの基準は元のヘッダー名 or 定義名
+             th.dataset.processedKey = columnDef.processedKey; // 実際のソートに使うキー
+             if (columnDef.align) {
+                 th.style.textAlign = columnDef.align;
+             }
+             tr.appendChild(th);
         });
-
-         // 危険度ランクのカラムを手動で追加（TSVに無くても表示）
-         if (!originalHeaders.includes('危険度ランク')) {
-            const thRank = document.createElement('th');
-            thRank.textContent = '危険度';
-            thRank.dataset.sort = '危険度ランク'; // ソートキー
-            thRank.dataset.processedKey = '危険度ランク'; // 処理済みキー
-            thRank.style.textAlign = 'center';
-            // 危険度ランクをどの位置に挿入するか？ 先頭に追加
-            tr.insertBefore(thRank, tr.firstChild);
-        }
-
 
         thead.appendChild(tr);
     }
+
 
     // テーブルボディ描画
     function renderTable(data) {
@@ -520,7 +626,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const fragment = document.createDocumentFragment();
-        const displayHeaders = Array.from(inventoryTableHeader.rows[0].cells).map(th => th.dataset.sort || th.textContent); // 表示するヘッダーの順序を取得
+        // 表示するヘッダーの sortKey (元のヘッダー名) を取得
+        const displaySortKeys = Array.from(inventoryTableHeader.rows[0].cells).map(th => th.dataset.sort);
 
         data.forEach(item => {
             const row = document.createElement('tr');
@@ -530,42 +637,45 @@ document.addEventListener('DOMContentLoaded', () => {
              if (item.滞留日数Numeric >= 180 && item.滞留日数Numeric < 9000) row.classList.add('stagnant');
 
              // ヘッダーの順序に合わせてセルを作成
-             displayHeaders.forEach(headerKey => {
+             displaySortKeys.forEach((sortKey, index) => {
+                 const th = inventoryTableHeader.rows[0].cells[index]; // 対応するth要素取得
                  const cell = document.createElement('td');
                  let cellValue = '';
-                 let textAlign = 'left';
-                 let isCurrency = false;
+                 let textAlign = th.style.textAlign || 'left'; // thのalignを継承
 
                  // 表示する値とスタイルを決定
-                 switch (headerKey) {
+                 switch (sortKey) {
                      case '危険度ランク':
                          cellValue = item['危険度ランク'];
-                         textAlign = 'center';
                          cell.style.fontWeight = 'bold';
                          break;
                      case '在庫金額(税別)':
                          cellValue = formatCurrency(item['在庫金額Numeric']);
-                         textAlign = 'right';
-                         isCurrency = true;
                          break;
                      case '在庫数量':
                          cellValue = item['在庫数量']; // 元の値を表示
-                         textAlign = 'right';
                          break;
-                     case '最終出庫(停滞)': // 表示用の滞留日数
-                         cellValue = item['滞留日数表示'];
-                         textAlign = 'right';
+                     case '(停滞)': // 滞留日数 or 最終入庫停滞日数
+                         // thの表示名で判断
+                         if (th.textContent === '滞留日数') {
+                            cellValue = item['滞留日数表示'];
+                         } else if (th.textContent === '最終入庫(停滞)') {
+                             cellValue = item['最終入庫停滞表示'];
+                         } else {
+                             cellValue = item[sortKey] ?? ''; // フォールバック
+                         }
                          break;
-                     case '有効期限': // 表示用の有効期限
+                     case '有効期限':
                          cellValue = item['有効期限表示'];
-                         textAlign = 'center';
                          break;
-                     case '最終入庫(停滞)': // 表示用の最終入庫停滞日数
-                         cellValue = item['最終入庫停滞表示'];
-                         textAlign = 'right';
+                     case '最終入庫':
+                         cellValue = item['最終入庫日Date'] ? formatDate(item['最終入庫日Date']) : '---';
+                         break;
+                     case '最終出庫':
+                         cellValue = item['最終出庫日Date'] ? formatDate(item['最終出庫日Date']) : '---';
                          break;
                      default:
-                         cellValue = item[headerKey] ?? ''; // 元のヘッダー名で値を取得
+                         cellValue = item[sortKey] ?? ''; // 元のヘッダー名で値を取得
                  }
 
                  cell.textContent = cellValue;
@@ -617,7 +727,7 @@ document.addEventListener('DOMContentLoaded', () => {
          const th = event.target.closest('th');
          if (!th || !th.dataset.sort) return; // data-sort属性がない場合は無視
 
-         const sortKey = th.dataset.sort; // 元のヘッダー名
+         const sortKey = th.dataset.sort; // 元のヘッダー名 or 定義名
          const processedKey = th.dataset.processedKey; // 処理済みキー
 
          if (currentSortColumn === sortKey) {
@@ -650,7 +760,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- ダッシュボード表示 ---
     function displayDashboard() {
-         // 薬品種別とメーカーのキー名を動的に取得
+         // 薬品種別とメーカー、薬品名のキー名を動的に取得
          const categoryKey = originalHeaders.find(h => h.includes('薬品種別')) || '薬品種別';
          const makerKey = originalHeaders.find(h => h.includes('メーカー')) || 'メーカー';
          const nameKey = originalHeaders.find(h => h.includes('薬品名称')) || '薬品名称';
@@ -707,7 +817,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (effA < effB) return ascending ? -1 : 1;
             if (effA > effB) return ascending ? 1 : -1;
-            return 0;
+            // 同値の場合は薬品名でソート（安定ソート）
+            const nameKey = originalHeaders.find(h => h.includes('薬品名称')) || '薬品名称';
+            return String(a[nameKey] ?? '').localeCompare(String(b[nameKey] ?? ''));
         }).slice(0, count);
 
         listElement.innerHTML = '';
