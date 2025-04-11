@@ -70,6 +70,14 @@
                             <h4><i class="fas fa-calendar-day"></i> 期限切迫在庫 (金額)</h4>
                             <p id="near-expiry-value">---</p>
                         </div>
+                         <div class="card kpi-card info">
+                            <h4><i class="fas fa-box-open"></i> 未使用在庫 (品目数)</h4>
+                            <p id="unused-items">---</p>
+                        </div>
+                        <div class="card kpi-card info">
+                             <h4><i class="fas fa-dolly"></i> 未使用在庫 (金額)</h4>
+                            <p id="unused-value">---</p>
+                        </div>
                     </div>
                      <div class="settings-card card">
                         <h3><i class="fas fa-sliders-h"></i> 設定</h3>
@@ -132,6 +140,12 @@
                      <div class="card">
                         <h4><i class="fas fa-dollar-sign"></i> 在庫金額トップ</h4>
                         <ul id="high-value-list" class="ranking-list">
+                             <li>データ読込中...</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h4><i class="fas fa-history"></i> 未使用在庫リスト (最終入庫が古い順)</h4>
+                        <ul id="unused-list" class="ranking-list">
                              <li>データ読込中...</li>
                         </ul>
                     </div>
