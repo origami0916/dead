@@ -14,8 +14,12 @@
 
     <section id="data-input-section" class="card">
         <h2><i class="fas fa-paste"></i> 在庫データ入力</h2>
-        <p>ここに在庫データを貼り付けてください。(タブ区切り形式を想定)</p>
+        <p>ここに在庫データを貼り付けてください。(タブ区切り形式、1行目はヘッダー)</p>
         <textarea id="inventoryDataInput" rows="10" placeholder="薬品コード (タブ) YJコード (タブ) 薬品種別 ..."></textarea>
+        <div style="margin-top: 1.5rem;">
+            <label for="excludedDrugsInput">除外薬品リスト (薬品コードを1行に1つ入力):</label>
+            <textarea id="excludedDrugsInput" rows="5" placeholder="除外したい薬品の薬品コードを入力..."></textarea>
+        </div>
         <button id="loadDataButton" class="button-primary"><i class="fas fa-upload"></i> このデータで分析を開始</button>
         <div id="data-error-output" class="error-message" style="display: none;"></div>
     </section>
@@ -68,11 +72,34 @@
                         </div>
                     </div>
                      <div class="settings-card card">
-                        <h3><i class="fas fa-sliders-h"></i> 危険度ランク設定</h3>
-                        <label for="expiryWeight">危険度バランス調整:</label>
-                        <span id="weightLabel">期限重視: 50% / 滞留重視: 50%</span> <br>
-                        <span class="slider-label">(左: 滞留重視 / 右: 期限重視)</span> <br>
-                        <input type="range" id="expiryWeight" name="expiryWeight" min="0" max="100" value="50" class="danger-slider">
+                        <h3><i class="fas fa-sliders-h"></i> 設定</h3>
+                         <div>
+                            <label for="analysisDate">分析基準日:</label>
+                            <input type="date" id="analysisDate" name="analysisDate">
+                            <button id="recalculateButton" class="button-secondary" style="margin-left: 10px;">再計算</button>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <label for="expiryWeight">危険度バランス調整:</label>
+                            <span id="weightLabel">期限重視: 50% / 滞留重視: 50%</span> <br>
+                            <span class="slider-label">(左: 滞留重視 / 右: 期限重視)</span> <br>
+                            <input type="range" id="expiryWeight" name="expiryWeight" min="0" max="100" value="50" class="danger-slider">
+                        </div>
+                         <div style="margin-top: 1rem;">
+                            <label for="stagnantThreshold">滞留在庫とみなす日数:</label>
+                            <input type="number" id="stagnantThreshold" name="stagnantThreshold" min="0" value="180" style="width: 80px;"> 日以上
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <label for="dashboardListCount">注目リスト表示件数:</label>
+                            <select id="dashboardListCount" name="dashboardListCount">
+                                <option value="5">5件</option>
+                                <option value="10">10件</option>
+                                <option value="20">20件</option>
+                                <option value="50">50件</option>
+                            </select>
+                        </div>
+                         <div style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                            <button id="printReportButton" class="button-secondary"><i class="fas fa-print"></i> 在庫レポート印刷 (PDF)</button>
+                        </div>
                     </div>
                 </div>
                 <div class="charts-area">
@@ -91,19 +118,19 @@
                 <div class="alert-lists">
                     <h3>注目リスト</h3>
                     <div class="card">
-                        <h4><i class="fas fa-sort-amount-down"></i> 滞留日数ワースト Top 5</h4>
+                        <h4><i class="fas fa-sort-amount-down"></i> 滞留日数ワースト</h4>
                         <ul id="stagnant-worst-list" class="ranking-list">
                             <li>データ読込中...</li>
                         </ul>
                     </div>
                     <div class="card">
-                        <h4><i class="fas fa-calendar-check"></i> 有効期限切迫 Top 5</h4>
+                        <h4><i class="fas fa-calendar-check"></i> 有効期限切迫</h4>
                         <ul id="near-expiry-worst-list" class="ranking-list">
                              <li>データ読込中...</li>
                         </ul>
                     </div>
                      <div class="card">
-                        <h4><i class="fas fa-dollar-sign"></i> 在庫金額 Top 5</h4>
+                        <h4><i class="fas fa-dollar-sign"></i> 在庫金額トップ</h4>
                         <ul id="high-value-list" class="ranking-list">
                              <li>データ読込中...</li>
                         </ul>
@@ -161,18 +188,7 @@
                 <table id="inventory-table">
                     <thead>
                         <tr>
-                            <th data-sort="危険度ランク">危険度</th>
-                             <th data-sort="薬品名称">薬品名称</th>
-                             <th data-sort="フリガナ">フリガナ</th>
-                             <th data-sort="在庫数量">在庫数量</th>
-                             <th data-sort="単位">単位</th>
-                             <th data-sort="在庫金額(税別)">在庫金額(税別)</th>
-                             <th data-sort="最終出庫(停滞)">滞留日数</th> <th data-sort="有効期限">有効期限</th> <th data-sort="薬品種別">薬品種別</th>
-                             <th data-sort="メーカー">メーカー</th>
-                             <th data-sort="卸">卸</th>
-                             <th data-sort="最終入庫(停滞)">最終入庫(停滞)</th><th data-sort="YJコード">YJコード</th>
-                             <th data-sort="薬品コード">薬品コード</th>
-                             </tr>
+                            </tr>
                     </thead>
                     <tbody>
                         <tr><td colspan="14" style="text-align: center;">データを入力して「分析を開始」ボタンを押してください...</td></tr>
@@ -188,17 +204,11 @@
                     <h3>ランキング表示</h3>
                     <select id="rankingType">
                         <option value="amountDesc">在庫金額ワースト</option>
-                        <option value="stagnationDesc">滞留日数ワースト</option>
+                        <option value="stagnationDesc">滞留日数ワースト (未使用品除く)</option>
                         <option value="expiryAsc">有効期限切迫</option>
                         <option value="quantityDesc">在庫数量過剰</option>
-                        <option value="quantityAsc">在庫数量過少</option>
+                        <option value="quantityAsc">在庫数量過少 (在庫ありのみ)</option>
                         </select>
-                    <label for="rankingTopN">表示件数:</label>
-                    <select id="rankingTopN">
-                        <option value="10">Top 10</option>
-                        <option value="20">Top 20</option>
-                        <option value="30">Top 30</option>
-                    </select>
                     <div class="chart-container" id="ranking-chart-container">
                          <canvas id="rankingChart"></canvas> </div>
                  </div>
@@ -222,7 +232,7 @@
 
                 <div class="card">
                     <h3><i class="fas fa-comment-dots"></i> アドバイス生成</h3>
-                     <p>現在の在庫データ全体（またはフィルタ結果）のサマリーをAIに送信し、分析と改善提案を依頼します。</p>
+                     <p>現在の在庫データ全体（除外薬品除く）のサマリーをAIに送信し、分析と改善提案を依頼します。</p>
                     <button id="getAiAdvice" class="button-primary" disabled><i class="fas fa-magic"></i> AIにアドバイスを求める</button>
                     <div id="ai-loading" class="loading" style="display: none;">
                         <i class="fas fa-spinner fa-spin"></i> AIが分析中です... しばらくお待ちください。
@@ -241,6 +251,8 @@
         </section>
     </main>
 
+    <section id="print-report-content" class="print-only card">
+        </section>
     <footer style="display: none;">
         <p>&copy; 2025 薬品在庫分析ダッシュボード</p>
     </footer>
