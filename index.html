@@ -3,131 +3,239 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>デッドストック管理ツール v3</title>
+    <title>薬品在庫分析ダッシュボード</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
-    <div id="appContainer" class="container">
+    <header>
+        <h1><i class="fas fa-chart-pie"></i> 薬品在庫分析ダッシュボード</h1>
+    </header>
 
-        <header>
-            <h1>薬品デッドストック管理ツール v3</h1>
-            <div class="header-controls">
-                <button id="fullscreenBtn" title="フルスクリーン切替"><i class="fas fa-expand"></i></button>
-                <button id="settingsBtn">設定</button>
-                <button id="aiAdvisorBtn">AIアドバイス</button>
-            </div>
-        </header>
+    <nav class="tab-nav">
+        <button class="tab-button active" data-tab="dashboard"><i class="fas fa-tachometer-alt"></i> ダッシュボード</button>
+        <button class="tab-button" data-tab="inventory-list"><i class="fas fa-list-ul"></i> 在庫一覧</button>
+        <button class="tab-button" data-tab="analysis-reports"><i class="fas fa-chart-bar"></i> 分析レポート</button>
+        <button class="tab-button" data-tab="ai-advisor"><i class="fas fa-brain"></i> AIアドバイス</button>
+    </nav>
 
-        <div class="input-grid">
-            <section id="dataInputArea" class="card">
-                <h2>在庫データ入力</h2>
-                <p>在庫データ（ヘッダー行を含む）を貼り付け</p>
-                <textarea id="pasteDataInput" placeholder="ここに在庫データを貼り付け..."></textarea>
-                <button id="processPasteBtn" class="btn btn-primary">在庫データを処理</button>
-            </section>
-            <section id="expiryDataInputArea" class="card">
-                <h2>有効期限データ入力 (任意)</h2>
-                <p>有効期限や薬価情報を含むデータを貼り付け</p>
-                <textarea id="expiryDataInput" placeholder="ここに有効期限・薬価データを貼り付け..."></textarea>
-                <button id="processExpiryBtn" class="btn btn-secondary">有効期限データを処理</button>
-            </section>
-        </div>
-
-        <section id="settingsArea" class="card settings-panel hidden">
-             <h2>設定</h2>
-             <div class="setting-item"> <label for="stagnantDays">停滞判定日数:</label> <input type="number" id="stagnantDays" value="180" min="1"> <span>日以上経過</span> </div>
-             <div class="setting-item"> <label for="nearExpiryDays">期限近接判定日数:</label> <input type="number" id="nearExpiryDays" value="90" min="1"> <span>日以内</span> </div>
-             <div class="setting-actions"> <button id="saveSettingsBtn" class="btn btn-success btn-sm">設定を保存</button> <button id="closeSettingsBtn" class="btn btn-cancel btn-sm">閉じる</button> </div>
-        </section>
-
-        <section id="aiAdvisorArea" class="card ai-panel hidden">
-             <h2>AIによる在庫全体アドバイス</h2>
-             <div class="warning-box"> <p><strong>【重要】</strong> APIキーはこのブラウザ上でのみ使用され、外部サーバーには保存されませんが、AIサービスへの送信時にネットワーク経由で漏洩するリスクがあります。自己責任でご利用ください。</p> </div>
-             <div class="ai-controls">
-                 <div> <label for="apiKey">OpenAI APIキー:</label> <input type="password" id="apiKey"> </div>
-                 <div> <label for="aiQuestion">AIへの質問/要望 (任意):</label> <textarea id="aiQuestion" rows="3" placeholder="例: 特に注意すべき点を指摘してください。（空欄可）"></textarea> </div>
-                 <div> <button id="getAdviceBtn" class="btn btn-ai" disabled>アドバイスを取得</button> <button id="closeAiBtn" class="btn btn-cancel">閉じる</button> </div>
-             </div>
-             <div id="aiResultArea"> <h3>AIからのアドバイス:</h3> <div id="aiAdviceOutput">ここにアドバイスが表示されます...</div> <div id="aiLoading" style="display: none;">AIに問い合わせ中...</div> </div>
-        </section>
-
-        <section id="analysisGraphArea" class="card">
-            <h2>分析グラフ</h2>
-             <p class="note">※グラフは現在表示されている(フィルタリング後の)在庫データに基づいて描画されます。</p>
-            <div class="graph-grid">
-                <div class="chart-wrapper"> <h3>状況別 構成比 (品目数)</h3> <div class="chart-container"><canvas id="statusPieChart"></canvas></div> </div>
-                <div class="chart-wrapper"> <h3>金額 上位5薬品</h3> <div class="bar-chart-container"><canvas id="topValueBarChart"></canvas></div> </div>
-                <div class="chart-wrapper"> <h3>停滞期間別 分布</h3> <div class="bar-chart-container"><canvas id="stagnationDistChart"></canvas></div> </div>
-                <div class="chart-wrapper"> <h3>メーカー別 金額 (Top10)</h3> <div class="bar-chart-container"><canvas id="makerBarChart"></canvas></div> </div>
-            </div>
-        </section>
-
-        <section id="adviceBoxArea" class="card advice-box">
-            <h2>💡 対応アドバイス (簡易)</h2>
-            <div id="adviceBox">
-                <p>在庫データを処理すると、状況に応じたアドバイスが表示されます。</p>
-            </div>
-        </section>
-
-        <section id="filterSearchArea" class="card">
-            <h2>絞り込み・検索</h2>
-            <div class="filter-grid">
-                <div> <label for="filterMaker">メーカー:</label> <input type="text" id="filterMaker" placeholder="メーカー名"> </div>
-                <div> <label for="filterWholesaler">卸:</label> <input type="text" id="filterWholesaler" placeholder="卸名"> </div>
-                <div> <label for="filterKeyword">検索:</label> <input type="text" id="filterKeyword" placeholder="薬品名、コードなど"> </div>
-                <div> <label for="filterLastOutDateStart">最終出庫日(開始):</label> <input type="date" id="filterLastOutDateStart"> </div>
-                <div> <label for="filterLastOutDateEnd">最終出庫日(終了):</label> <input type="date" id="filterLastOutDateEnd"> </div>
-                <div></div>
-                <div> <label for="filterExpiryDateStart">有効期限(開始):</label> <input type="date" id="filterExpiryDateStart"> </div>
-                <div> <label for="filterExpiryDateEnd">有効期限(終了):</label> <input type="date" id="filterExpiryDateEnd"> </div>
-            </div>
-             <div class="filter-actions">
-                <button id="applyFilterBtn" class="btn btn-primary">適用</button>
-                <button id="resetFilterBtn" class="btn btn-cancel">リセット</button>
-            </div>
-        </section>
-
-        <section id="summaryAlertArea" class="card summary-panel">
-            <h2>状況サマリー</h2>
-            <div id="summaryOutput">
-                <p>デッドストック合計金額: <span id="totalDeadStockValue">0</span> 円 (税別)</p>
-                <p>デッドストック合計品目数: <span id="totalDeadStockItems">0</span> 品目</p>
-            </div>
-            <div id="alertOutput" class="alerts">
-                 <p class="no-alerts">現在、アラート対象の在庫はありません。</p>
-            </div>
-            <div class="alert-filters">
-                <span>アラート別表示:</span>
-                <button id="filterShowAllBtn" class="filter-btn filter-active">すべて表示</button>
-                <button id="filterExpiredBtn" data-status-filter="expired" class="filter-btn filter-expired">期限切れのみ</button>
-                <button id="filterNearExpiryBtn" data-status-filter="near_expired" class="filter-btn filter-near-expiry">期限近接のみ</button>
-                <button id="filterStagnantBtn" data-status-filter="stagnant" class="filter-btn filter-stagnant">停滞のみ</button>
+    <main>
+        <section id="dashboard" class="tab-content active">
+            <h2>ダッシュボード</h2>
+            <div class="dashboard-grid">
+                <div class="kpi-cards">
+                    <h3>主要指標</h3>
+                    <div class="card-container">
+                        <div class="card kpi-card">
+                            <h4><i class="fas fa-pills"></i> 総在庫品目数</h4>
+                            <p id="total-items">---</p>
+                        </div>
+                        <div class="card kpi-card">
+                            <h4><i class="fas fa-yen-sign"></i> 総在庫金額 (税別)</h4>
+                            <p id="total-value">---</p>
+                        </div>
+                        <div class="card kpi-card warning">
+                            <h4><i class="fas fa-exclamation-triangle"></i> 要注意在庫 (品目数)</h4>
+                            <p id="caution-items">---</p>
+                        </div>
+                        <div class="card kpi-card warning">
+                             <h4><i class="fas fa-exclamation-triangle"></i> 要注意在庫 (金額)</h4>
+                            <p id="caution-value">---</p>
+                        </div>
+                         <div class="card kpi-card danger">
+                            <h4><i class="fas fa-hourglass-half"></i> 滞留在庫 (品目数)</h4>
+                            <p id="stagnant-items">---</p>
+                        </div>
+                        <div class="card kpi-card danger">
+                             <h4><i class="fas fa-hourglass-end"></i> 滞留在庫 (金額)</h4>
+                            <p id="stagnant-value">---</p>
+                        </div>
+                        <div class="card kpi-card danger">
+                            <h4><i class="fas fa-calendar-times"></i> 期限切迫在庫 (品目数)</h4>
+                            <p id="near-expiry-items">---</p>
+                        </div>
+                         <div class="card kpi-card danger">
+                            <h4><i class="fas fa-calendar-day"></i> 期限切迫在庫 (金額)</h4>
+                            <p id="near-expiry-value">---</p>
+                        </div>
+                    </div>
+                     <div class="settings-card card">
+                        <h3><i class="fas fa-sliders-h"></i> 危険度ランク設定</h3>
+                        <label for="expiryWeight">危険度バランス調整:</label>
+                        <span id="weightLabel">期限重視: 50% / 滞留重視: 50%</span> <br>
+                        <span class="slider-label">(左: 滞留重視 / 右: 期限重視)</span> <br>
+                        <input type="range" id="expiryWeight" name="expiryWeight" min="0" max="100" value="50" class="danger-slider">
+                    </div>
+                </div>
+                <div class="charts-area">
+                    <h3>在庫構成</h3>
+                    <div class="card">
+                        <h4>薬品種別 在庫金額構成</h4>
+                        <div class="chart-container" id="category-chart-container">
+                            <canvas id="categoryChart"></canvas> </div>
+                    </div>
+                     <div class="card">
+                        <h4>メーカー別 在庫金額 Top 5</h4>
+                         <div class="chart-container" id="maker-chart-container">
+                            <canvas id="makerChart"></canvas> </div>
+                    </div>
+                </div>
+                <div class="alert-lists">
+                    <h3>注目リスト</h3>
+                    <div class="card">
+                        <h4><i class="fas fa-sort-amount-down"></i> 滞留日数ワースト Top 5</h4>
+                        <ul id="stagnant-worst-list" class="ranking-list">
+                            <li>データ読込中...</li>
+                        </ul>
+                    </div>
+                    <div class="card">
+                        <h4><i class="fas fa-calendar-check"></i> 有効期限切迫 Top 5</h4>
+                        <ul id="near-expiry-worst-list" class="ranking-list">
+                             <li>データ読込中...</li>
+                        </ul>
+                    </div>
+                     <div class="card">
+                        <h4><i class="fas fa-dollar-sign"></i> 在庫金額 Top 5</h4>
+                        <ul id="high-value-list" class="ranking-list">
+                             <li>データ読込中...</li>
+                        </ul>
+                    </div>
+                </div>
             </div>
         </section>
 
-        <section id="inventoryListArea" class="card">
-             <div class="list-header">
-                 <h2>在庫一覧</h2>
-                 <div class="list-actions">
-                     <button id="exportPdfBtn" class="btn btn-danger btn-sm">PDF出力</button>
-                     <button id="exportCsvBtn" class="btn btn-success btn-sm">CSV出力</button>
-                 </div>
-             </div>
-            <div class="table-container">
-                <table id="inventoryTable">
-                    <thead> <tr> </tr> </thead>
-                    <tbody> <tr><td colspan="100%">在庫データを貼り付けて「処理」ボタンを押してください。</td></tr> </tbody>
+        <section id="inventory-list" class="tab-content">
+            <h2>在庫一覧</h2>
+            <div class="controls-panel card">
+                <div class="control-group">
+                    <input type="text" id="searchInput" placeholder="薬品名、メーカー名などで検索...">
+                    <select id="categoryFilter">
+                        <option value="">薬品種別 (すべて)</option>
+                        </select>
+                    <select id="makerFilter">
+                        <option value="">メーカー (すべて)</option>
+                         </select>
+                    <select id="dangerRankFilter">
+                        <option value="">危険度ランク (すべて)</option>
+                        <option value="10">10 (最危険)</option>
+                        <option value="9">9</option>
+                        <option value="8">8</option>
+                        <option value="7">7</option>
+                        <option value="6">6</option>
+                        <option value="5">5</option>
+                        <option value="4">4</option>
+                        <option value="3">3</option>
+                        <option value="2">2</option>
+                        <option value="1">1 (安全)</option>
+                    </select>
+                     <button id="resetFilters">リセット</button>
+                </div>
+                 <div class="control-group pagination-controls">
+                    <span id="itemCount">全 0 件</span>
+                    <button id="prevPage" disabled>&lt; 前へ</button>
+                    <span id="pageInfo">ページ 1 / 1</span>
+                    <button id="nextPage" disabled>次へ &gt;</button>
+                     <select id="itemsPerPage">
+                        <option value="50">50件表示</option>
+                        <option value="100">100件表示</option>
+                        <option value="200">200件表示</option>
+                        <option value="all">全件表示</option>
+                    </select>
+                </div>
+
+            </div>
+
+            <div id="loading-indicator" class="loading" style="display: none;">
+                <i class="fas fa-spinner fa-spin"></i> データを読み込んでいます...
+            </div>
+
+            <div class="table-wrapper card">
+                <table id="inventory-table">
+                    <thead>
+                        <tr>
+                            <th data-sort="dangerRank">危険度</th>
+                             <th data-sort="薬品名称">薬品名称</th>
+                             <th data-sort="フリガナ">フリガナ</th>
+                             <th data-sort="在庫数量">在庫数量</th>
+                             <th data-sort="単位">単位</th>
+                             <th data-sort="在庫金額(税別)">在庫金額(税別)</th>
+                             <th data-sort="最終出庫(停滞)">滞留日数</th>
+                             <th data-sort="有効期限">有効期限</th>
+                             <th data-sort="薬品種別">薬品種別</th>
+                             <th data-sort="メーカー">メーカー</th>
+                             <th data-sort="卸">卸</th>
+                             </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="11" style="text-align: center;">データを読み込んでください...</td></tr>
+                    </tbody>
                 </table>
             </div>
         </section>
 
-        <footer> <p>デッドストック管理ツール v3 - <span id="currentDate"></span></p> </footer>
+        <section id="analysis-reports" class="tab-content">
+            <h2>分析レポート</h2>
+            <div class="report-container">
+                 <div class="card">
+                    <h3>ランキング表示</h3>
+                    <select id="rankingType">
+                        <option value="amountDesc">在庫金額ワースト</option>
+                        <option value="stagnationDesc">滞留日数ワースト</option>
+                        <option value="expiryAsc">有効期限切迫</option>
+                        <option value="quantityDesc">在庫数量過剰</option>
+                        <option value="quantityAsc">在庫数量過少</option>
+                        </select>
+                    <label for="rankingTopN">表示件数:</label>
+                    <select id="rankingTopN">
+                        <option value="10">Top 10</option>
+                        <option value="20">Top 20</option>
+                        <option value="30">Top 30</option>
+                    </select>
+                    <div class="chart-container" id="ranking-chart-container">
+                         <canvas id="rankingChart"></canvas> </div>
+                 </div>
+                 </div>
+        </section>
 
-    </div><script src="script.js"></script>
-</body>
+        <section id="ai-advisor" class="tab-content">
+            <h2>AI在庫分析アドバイザー</h2>
+            <div class="ai-container">
+                <div id="api-key-section" class="card">
+                    <h3><i class="fas fa-key"></i> OpenAI APIキー設定</h3>
+                    <div class="api-warning">
+                        <p><strong><i class="fas fa-exclamation-triangle"></i> 【重要】APIキーの取り扱いについて</strong></p>
+                        <p>ここで入力されたAPIキーは、アドバイス生成のために一時的にブラウザに保存され、OpenAI APIとの通信に使用されます。<strong>第三者に知られると悪用される危険性があります。</strong>APIキーの管理には十分ご注意ください。このリスクを理解し、自己責任でご利用いただく場合にのみ、キーを入力してください。ページを閉じると入力されたキーは破棄されます。</p>
+                    </div>
+                    <label for="apiKey">APIキー:</label>
+                    <input type="password" id="apiKey" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+                    <button id="saveApiKey" class="button-primary">キーを一時保存</button>
+                     <span id="apiKeyStatus"></span>
+                </div>
+
+                <div class="card">
+                    <h3><i class="fas fa-comment-dots"></i> アドバイス生成</h3>
+                     <p>現在の在庫データ全体（またはフィルタ結果）のサマリーをAIに送信し、分析と改善提案を依頼します。</p>
+                    <button id="getAiAdvice" class="button-primary" disabled><i class="fas fa-magic"></i> AIにアドバイスを求める</button>
+                    <div id="ai-loading" class="loading" style="display: none;">
+                        <i class="fas fa-spinner fa-spin"></i> AIが分析中です... しばらくお待ちください。
+                    </div>
+                     <div id="ai-error-output" class="error-message" style="display: none;"></div>
+                </div>
+
+                <div class="card">
+                    <h3><i class="fas fa-lightbulb"></i> AIからのアドバイス</h3>
+                    <div id="ai-advice-output">
+                        <p>ここにAIからのアドバイスが表示されます。</p>
+                    </div>
+                    <button id="copyAiAdvice" style="display: none;">アドバイスをコピー</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 薬品在庫分析ダッシュボード</p>
+    </footer>
+
+    </body>
 </html>
